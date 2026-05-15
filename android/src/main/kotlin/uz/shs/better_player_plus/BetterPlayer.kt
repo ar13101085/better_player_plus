@@ -172,7 +172,13 @@ internal class BetterPlayer(
                     .build(httpMediaDrmCallback)
             }
         } else if (!clearKey.isNullOrEmpty()) {
-            DefaultDrmSessionManager.Builder()
+            // Upstream forgot to assign the built session manager to
+            // `drmSessionManager`, so `buildMediaSource` ran the DASH
+            // factory without any DRM wiring and ExoPlayer hit every
+            // encrypted sample with "Crypto key not available". Assigning
+            // the result lets the JWK we just built actually reach
+            // MediaDRM.
+            drmSessionManager = DefaultDrmSessionManager.Builder()
                 .setUuidAndExoMediaDrmProvider(
                     C.CLEARKEY_UUID,
                     FrameworkMediaDrm.DEFAULT_PROVIDER
