@@ -23,9 +23,22 @@ class BetterPlayerAsmsUtils {
   ///Check if given url is DASH-type data source.
   static bool isDataSourceDash(String url) => url.contains(_dashExtension);
 
-  ///Parse playlist based on type of stream.
-  static Future<BetterPlayerAsmsDataHolder> parse(String data, String masterPlaylistUrl) =>
-      BetterPlayerHlsUtils.parse(data, masterPlaylistUrl);
+  /// Parse playlist based on type of stream.
+  ///
+  /// The HLS parser will throw `SignalException: Input does not start
+  /// with the #EXTM3U header` on a DASH MPD, log it, and return empty.
+  /// That used to be the only path, but DASH track lists now come in via
+  /// the native `tracksChanged` event (see BetterPlayer.kt), so the
+  /// throw + log is pure noise. Skip the HLS parse entirely for DASH and
+  /// return an empty holder — the native event will populate
+  /// `_betterPlayerAsmsTracks` / `_betterPlayerAsmsAudioTracks` once the
+  /// player parses the manifest.
+  static Future<BetterPlayerAsmsDataHolder> parse(String data, String masterPlaylistUrl) {
+    if (isDataSourceDash(masterPlaylistUrl)) {
+      return Future.value(BetterPlayerAsmsDataHolder());
+    }
+    return BetterPlayerHlsUtils.parse(data, masterPlaylistUrl);
+  }
 
   ///Request data from given uri along with headers. May return null if resource
   ///is not available or on error.
