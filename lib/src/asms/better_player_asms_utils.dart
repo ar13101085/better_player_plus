@@ -12,7 +12,17 @@ class BetterPlayerAsmsUtils {
   static const String _hlsExtension = 'm3u8';
   static const String _dashExtension = 'mpd';
 
-  static final HttpClient _httpClient = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+  static final HttpClient _httpClient = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 5)
+    ..badCertificateCallback = allowIpHostCertMismatch;
+
+  /// Accept a TLS certificate whose hostname doesn't match ONLY when the host
+  /// is a bare IP literal. This is the `dns_auto` case: the stream is pinned
+  /// to an IP, so the server's (valid, CA-signed) domain certificate can never
+  /// match the IP. Named hosts keep full verification — a real cert error on a
+  /// domain still rejects, so normal HTTPS protection is unchanged.
+  static bool allowIpHostCertMismatch(X509Certificate cert, String host, int port) =>
+      InternetAddress.tryParse(host) != null;
 
   ///Check if given url is HLS / DASH-type data source.
   static bool isDataSourceAsms(String url) => isDataSourceHls(url) || isDataSourceDash(url);

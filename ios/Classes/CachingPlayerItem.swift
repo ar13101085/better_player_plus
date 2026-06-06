@@ -88,7 +88,32 @@ open class CachingPlayerItem: AVPlayerItem {
         }
         
         // MARK: URLSession delegate
-        
+
+        /// Accept a server certificate whose hostname doesn't match ONLY when
+        /// the host is a bare IP literal — the `dns_auto` case, where a stream
+        /// is pinned to an IP so the valid, CA-signed domain certificate can't
+        /// match. Named hosts fall through to default validation, so normal
+        /// HTTPS keeps full protection. (Covers the caching playback path; the
+        /// plain AVURLAsset path has no comparable hook.)
+        func urlSession(_ session: URLSession,
+                        didReceive challenge: URLAuthenticationChallenge,
+                        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+                  let serverTrust = challenge.protectionSpace.serverTrust,
+                  ResourceLoaderDelegate.isIpLiteral(challenge.protectionSpace.host) else {
+                completionHandler(.performDefaultHandling, nil)
+                return
+            }
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        }
+
+        static func isIpLiteral(_ host: String) -> Bool {
+            var v4 = in_addr()
+            var v6 = in6_addr()
+            return host.withCString { inet_pton(AF_INET, $0, &v4) == 1 } ||
+                   host.withCString { inet_pton(AF_INET6, $0, &v6) == 1 }
+        }
+
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
             mediaData?.append(data)
             processPendingRequests()

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:better_player_plus/better_player_plus.dart';
+import 'package:better_player_plus/src/asms/better_player_asms_utils.dart';
 import 'package:better_player_plus/src/core/better_player_utils.dart';
 import 'package:better_player_plus/src/subtitles/better_player_subtitle.dart';
 
@@ -42,7 +43,8 @@ class BetterPlayerSubtitlesFactory {
 
   static Future<List<BetterPlayerSubtitle>> _parseSubtitlesFromNetwork(BetterPlayerSubtitlesSource source) async {
     try {
-      final client = HttpClient();
+      final client = HttpClient()
+        ..badCertificateCallback = BetterPlayerAsmsUtils.allowIpHostCertMismatch;
       final List<BetterPlayerSubtitle> subtitles = [];
       for (final String? url in source.urls!) {
         final request = await client.getUrl(Uri.parse(url!));
