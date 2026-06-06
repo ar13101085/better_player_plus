@@ -50,7 +50,6 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.dash.DashMediaSource
@@ -115,14 +114,7 @@ internal class BetterPlayer(
             this.customDefaultLoadControl.bufferForPlaybackAfterRebufferMs
         )
         loadControl = loadBuilder.build()
-        // Enable software-decoder fallback: when a hardware MediaCodec fails to
-        // initialize or throws mid-stream (e.g. Qualcomm AVC decoders choke on
-        // certain ref-frame configs and SIGABRT with IllegalStateException),
-        // ExoPlayer retries the next decoder in the list — typically the
-        // platform software AVC decoder, which tolerates these streams.
-        val renderersFactory = DefaultRenderersFactory(context)
-            .setEnableDecoderFallback(true)
-        exoPlayer = ExoPlayer.Builder(context, renderersFactory)
+        exoPlayer = ExoPlayer.Builder(context)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .build()
