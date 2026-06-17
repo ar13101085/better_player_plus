@@ -120,8 +120,17 @@ internal class BetterPlayer(
         // certain ref-frame configs and SIGABRT with IllegalStateException),
         // ExoPlayer retries the next decoder in the list — typically the
         // platform software AVC decoder, which tolerates these streams.
+        //
+        // EXTENSION_RENDERER_MODE_ON additionally enables the bundled Media3
+        // software-decoder extensions (FFmpeg audio, dav1d/AV1, libvpx/VP9, MIDI;
+        // vendored in android/libs/) as a *fallback* AFTER the platform decoders:
+        // the hardware MediaCodec is always tried first, and an extension renderer
+        // is used only when no MediaCodec supports the format (e.g. AC-3/E-AC-3/DTS
+        // audio on devices without a Dolby/DTS hardware decoder) or it fails. Use
+        // EXTENSION_RENDERER_MODE_PREFER instead to force the software extension.
         val renderersFactory = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         exoPlayer = ExoPlayer.Builder(context, renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
