@@ -149,7 +149,15 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
     final int milliseconds =
         await _channel.invokeMethod<int>('absolutePosition', <String, dynamic>{'textureId': textureId}) ?? 0;
 
-    if (milliseconds <= 0) {
+    // Live streams without a program-date-time / wall-clock anchor make the
+    // native side hand back a bogus absolute position: commonly 0 or negative,
+    // but also values near Long.MAX_VALUE (e.g. 9223372036854772983). Dart's
+    // DateTime only accepts ±8640000000000000 ms from the epoch and
+    // DateTime.fromMillisecondsSinceEpoch throws a RangeError outside that
+    // window — so treat anything out of range as "no absolute position"
+    // instead of crashing the whole app on a live channel.
+    const int maxDartEpochMs = 8640000000000000;
+    if (milliseconds <= 0 || milliseconds > maxDartEpochMs) {
       return null;
     }
 
