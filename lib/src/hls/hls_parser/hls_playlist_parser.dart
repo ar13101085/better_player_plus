@@ -115,7 +115,13 @@ class HlsPlaylistParser {
         .where((line) => line.trim().isNotEmpty)
         .toList();
 
-    if (!_checkPlaylistHeader(lineList[0])) {
+    // An empty or blank/whitespace-only playlist leaves lineList empty, so
+    // lineList[0] would throw a raw RangeError (an Error, not an Exception) —
+    // which slips past the `on Exception` handlers in BetterPlayerHlsUtils and
+    // crashes the app. Signal it as the parser's own Exception instead, which
+    // those handlers catch and log, so a bad provider playlist degrades to
+    // "no tracks" rather than a crash.
+    if (lineList.isEmpty || !_checkPlaylistHeader(lineList[0])) {
       throw UnrecognizedInputFormatException('Input does not start with the #EXTM3U header.', uri);
     }
 

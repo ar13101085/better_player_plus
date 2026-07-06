@@ -29,7 +29,12 @@ sealed class BetterPlayerHlsUtils {
       tracks = list[0] as List<BetterPlayerAsmsTrack>;
       subtitles = list[1] as List<BetterPlayerAsmsSubtitle>;
       audios = list[2] as List<BetterPlayerAsmsAudioTrack>;
-    } on Exception catch (exception) {
+      // Catch Error too, not just Exception: this HLS parser is a hand port
+      // full of unguarded list/regex accesses that throw RangeError/StateError
+      // (Errors, not Exceptions) on the malformed m3u8 arbitrary IPTV providers
+      // serve. A parse failure must degrade to an empty result, never crash
+      // playback.
+    } catch (exception) {
       BetterPlayerUtils.log('Exception on hls parse: $exception');
     }
     return BetterPlayerAsmsDataHolder(tracks: tracks, audios: audios, subtitles: subtitles);
@@ -58,7 +63,12 @@ sealed class BetterPlayerHlsUtils {
       if (tracks.isNotEmpty) {
         tracks.insert(0, BetterPlayerAsmsTrack.defaultTrack());
       }
-    } on Exception catch (exception) {
+      // Catch Error too, not just Exception: this HLS parser is a hand port
+      // full of unguarded list/regex accesses that throw RangeError/StateError
+      // (Errors, not Exceptions) on the malformed m3u8 arbitrary IPTV providers
+      // serve. A parse failure must degrade to an empty result, never crash
+      // playback.
+    } catch (exception) {
       BetterPlayerUtils.log('Exception on parseSubtitles: $exception');
     }
     return tracks;
@@ -78,7 +88,12 @@ sealed class BetterPlayerHlsUtils {
           }
         }
       }
-    } on Exception catch (exception) {
+      // Catch Error too, not just Exception: this HLS parser is a hand port
+      // full of unguarded list/regex accesses that throw RangeError/StateError
+      // (Errors, not Exceptions) on the malformed m3u8 arbitrary IPTV providers
+      // serve. A parse failure must degrade to an empty result, never crash
+      // playback.
+    } catch (exception) {
       BetterPlayerUtils.log('Exception on parseSubtitles: $exception');
     }
 
@@ -156,7 +171,12 @@ sealed class BetterPlayerHlsUtils {
         mimeType: rendition.format.containerMimeType,
         isDefault: isDefault,
       );
-    } on Exception catch (exception) {
+      // Catch Error too, not just Exception: this HLS parser is a hand port
+      // full of unguarded list/regex accesses that throw RangeError/StateError
+      // (Errors, not Exceptions) on the malformed m3u8 arbitrary IPTV providers
+      // serve. A parse failure must degrade to an empty result, never crash
+      // playback.
+    } catch (exception) {
       BetterPlayerUtils.log('Failed to process subtitles playlist: $exception');
       return null;
     }
