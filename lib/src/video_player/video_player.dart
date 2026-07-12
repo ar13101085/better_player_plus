@@ -214,7 +214,23 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       switch (event.eventType) {
         case VideoEventType.initialized:
           value = value.copyWith(duration: event.duration, size: event.size);
-          _initializingCompleter.complete(null);
+          // Guard, exactly as errorListener below already does. This completer
+          // may ALREADY be completed by the time an `initialized` event lands:
+          //
+          //   * errorListener completes it with an error on a source failure —
+          //     and the native player can still go on to emit `initialized`
+          //     afterwards, because it re-prepares on retry / HLS recovery;
+          //   * `initialized` can simply arrive more than once for one completer
+          //     (a new data source set on a reused controller re-prepares
+          //     ExoPlayer, which re-emits it).
+          //
+          // Completing a second time throws "Bad state: Future already
+          // completed". That fires inside a stream callback, so nobody catches
+          // it: it escapes as an unhandled async error and a
+          // Crashlytics-instrumented app records it as a FATAL crash.
+          if (!_initializingCompleter.isCompleted) {
+            _initializingCompleter.complete(null);
+          }
           _applyPlayPause();
         case VideoEventType.completed:
           value = value.copyWith(isPlaying: false, position: value.duration);
