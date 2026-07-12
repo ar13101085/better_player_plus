@@ -389,6 +389,27 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
 
     _initializingCompleter = Completer<void>();
 
+    // Attach a listener to the completer's future NOW, before the async gap
+    // below.
+    //
+    // `errorListener` completes this completer with an error as soon as the
+    // native player reports one. A source error (bad/404 manifest, dead stream)
+    // is reported almost immediately after `setDataSource` — i.e. DURING the
+    // await on the next line, before the caller has had any chance to attach its
+    // own `await` to the future returned on the line after that.
+    //
+    // A Future completed with an error while nothing is listening is an
+    // UNHANDLED async error in Dart. It gets routed to the zone /
+    // PlatformDispatcher.onError, where a Crashlytics-instrumented app records it
+    // as a FATAL CRASH — even though nothing crashed and the caller goes on to
+    // receive and handle the very same error a moment later.
+    //
+    // This no-op handler makes the future "observed" at completion time. The
+    // error still propagates to whoever awaits the returned future (each listener
+    // gets its own copy), so real error handling is unaffected — we only stop
+    // Dart from reporting a routine, handled playback failure as a crash.
+    unawaited(_initializingCompleter.future.catchError((Object _) {}));
+
     await VideoPlayerPlatform.instance.setDataSource(_textureId, dataSourceDescription);
     return _initializingCompleter.future;
   }
