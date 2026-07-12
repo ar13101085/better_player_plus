@@ -159,6 +159,20 @@ internal class BetterPlayer(
     ) {
         this.key = key
         isInitialized = false
+        // Release the previous source BEFORE attaching the new one.
+        //
+        // Without this, setMediaSource()/prepare() below swap the source while
+        // the outgoing MediaSource's loader is still draining: its in-flight
+        // HTTP requests are torn down asynchronously on the loader thread, so
+        // for a live stream (where the load control keeps a large buffer in
+        // flight) the OLD stream is still being downloaded while the NEW one
+        // starts. Two concurrent pulls contend for bandwidth, and IPTV
+        // providers that cap concurrent connections per line will throttle or
+        // cut one of them — which arrives at the decoder as corruption
+        // (macroblocking). stop() releases the loader; clearMediaItems() drops
+        // the old playlist so nothing can resume it.
+        exoPlayer?.stop()
+        exoPlayer?.clearMediaItems()
         val uri = dataSource?.toUri()
         var dataSourceFactory: DataSource.Factory?
         val userAgent = getUserAgent(headers)

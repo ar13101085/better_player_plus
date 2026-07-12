@@ -287,39 +287,60 @@ class BetterPlayerController {
   ///This method configures tracks, subtitles and audio tracks from given
   ///master playlist.
   Future<void> _setupAsmsDataSource(BetterPlayerDataSource source) async {
-    final String? data = await BetterPlayerAsmsUtils.getDataFromUrl(betterPlayerDataSource!.url, _getHeaders());
-    if (data != null) {
-      final BetterPlayerAsmsDataHolder response = await BetterPlayerAsmsUtils.parse(data, betterPlayerDataSource!.url);
+    // Everything here reads the captured [source], never the mutable
+    // `betterPlayerDataSource` field, and bails the moment the controller has
+    // moved on.
+    //
+    // This method is kicked off unawaited from setupDataSource() and performs a
+    // real network fetch of the manifest. On a rapid channel switch its future
+    // can land AFTER the next channel's setupDataSource() has already run —
+    // and the original code then read the *field*, so it wrote the OLD
+    // channel's tracks, subtitles and audio into the NEW channel's live
+    // controller (including setAudioTrack(), which re-selects a track on the
+    // player that is already playing something else).
+    final String? data =
+        await BetterPlayerAsmsUtils.getDataFromUrl(source.url, _getHeaders());
+    if (_disposed || !identical(_betterPlayerDataSource, source)) {
+      return;
+    }
+    if (data == null) {
+      return;
+    }
 
-      /// Load tracks
-      if (_betterPlayerDataSource?.useAsmsTracks ?? false) {
-        _betterPlayerAsmsTracks = response.tracks ?? [];
+    final BetterPlayerAsmsDataHolder response =
+        await BetterPlayerAsmsUtils.parse(data, source.url);
+    if (_disposed || !identical(_betterPlayerDataSource, source)) {
+      return;
+    }
+
+    /// Load tracks
+    if (source.useAsmsTracks ?? false) {
+      _betterPlayerAsmsTracks = response.tracks ?? [];
+    }
+
+    /// Load subtitles
+    if (source.useAsmsSubtitles ?? false) {
+      final List<BetterPlayerAsmsSubtitle> asmsSubtitles = response.subtitles ?? [];
+      for (final asmsSubtitle in asmsSubtitles) {
+        _betterPlayerSubtitlesSourceList.add(
+          BetterPlayerSubtitlesSource(
+            type: BetterPlayerSubtitlesSourceType.network,
+            name: asmsSubtitle.name,
+            urls: asmsSubtitle.realUrls,
+            asmsIsSegmented: asmsSubtitle.isSegmented,
+            asmsSegmentsTime: asmsSubtitle.segmentsTime,
+            asmsSegments: asmsSubtitle.segments,
+            selectedByDefault: asmsSubtitle.isDefault,
+          ),
+        );
       }
+    }
 
-      /// Load subtitles
-      if (betterPlayerDataSource?.useAsmsSubtitles ?? false) {
-        final List<BetterPlayerAsmsSubtitle> asmsSubtitles = response.subtitles ?? [];
-        for (final asmsSubtitle in asmsSubtitles) {
-          _betterPlayerSubtitlesSourceList.add(
-            BetterPlayerSubtitlesSource(
-              type: BetterPlayerSubtitlesSourceType.network,
-              name: asmsSubtitle.name,
-              urls: asmsSubtitle.realUrls,
-              asmsIsSegmented: asmsSubtitle.isSegmented,
-              asmsSegmentsTime: asmsSubtitle.segmentsTime,
-              asmsSegments: asmsSubtitle.segments,
-              selectedByDefault: asmsSubtitle.isDefault,
-            ),
-          );
-        }
-      }
-
-      ///Load audio tracks
-      if ((betterPlayerDataSource?.useAsmsAudioTracks ?? false) && _isDataSourceAsms(betterPlayerDataSource!)) {
-        _betterPlayerAsmsAudioTracks = response.audios ?? [];
-        if (_betterPlayerAsmsAudioTracks?.isNotEmpty ?? false) {
-          setAudioTrack(_betterPlayerAsmsAudioTracks!.first);
-        }
+    ///Load audio tracks
+    if ((source.useAsmsAudioTracks ?? false) && _isDataSourceAsms(source)) {
+      _betterPlayerAsmsAudioTracks = response.audios ?? [];
+      if (_betterPlayerAsmsAudioTracks?.isNotEmpty ?? false) {
+        setAudioTrack(_betterPlayerAsmsAudioTracks!.first);
       }
     }
   }
@@ -1285,6 +1306,60 @@ class BetterPlayerController {
       for (final file in _tempFiles) {
         file.delete();
       }
+    }
+  }
+
+  /// Awaitable teardown — completes only once the platform has actually
+  /// released the native player.
+  ///
+  /// [dispose] is `void`: it drops the futures returned by `pause()` and
+  /// `videoPlayerController.dispose()`, so it returns while the native
+  /// ExoPlayer/AVPlayer is still alive — still decoding, and still holding its
+  /// HTTP socket open. A caller that tears down one controller and immediately
+  /// opens the next therefore ends up with **two players pulling two streams at
+  /// once**: audio keeps playing from the old one with its surface detached,
+  /// the two downloads contend for bandwidth, and IPTV providers that cap
+  /// concurrent connections per line throttle or cut one of them — which
+  /// reaches the decoder as corruption (macroblocking).
+  ///
+  /// Use this instead of [dispose] whenever the next source is about to be
+  /// opened.
+  Future<void> disposeAsync({bool forceDispose = false}) async {
+    if (!betterPlayerConfiguration.autoDispose && !forceDispose) {
+      return;
+    }
+    if (_disposed) {
+      return;
+    }
+    // Set first: blocks re-entrancy and stops event handlers from touching
+    // controllers we are about to close.
+    _disposed = true;
+
+    _nextVideoTimer?.cancel();
+    await _videoEventStreamSubscription?.cancel();
+
+    final controller = videoPlayerController;
+    if (controller != null) {
+      controller
+        ..removeListener(_onFullScreenStateChanged)
+        ..removeListener(_onVideoPlayerChanged);
+      // Stop pulling before releasing, then await the actual native release.
+      try {
+        await controller.pause();
+      } catch (_) {}
+      try {
+        await controller.dispose();
+      } catch (_) {}
+    }
+
+    _eventListeners.clear();
+    await _nextVideoTimeStreamController.close();
+    await _controlsVisibilityStreamController.close();
+    await _controllerEventStreamController.close();
+
+    ///Delete files async
+    for (final file in _tempFiles) {
+      unawaited(file.delete());
     }
   }
 }
