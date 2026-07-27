@@ -230,6 +230,9 @@ class BetterPlayerController {
     _postControllerEvent(BetterPlayerControllerEvent.setupDataSource);
     _hasCurrentDataSourceStarted = false;
     _hasCurrentDataSourceInitialized = false;
+    // New source — clear the previous source's error marker so its failure
+    // can't suppress (dedupe away) or be attributed to this source.
+    _videoPlayerValueOnError = null;
     _betterPlayerDataSource = betterPlayerDataSource;
     _betterPlayerSubtitlesSourceList.clear();
 
@@ -746,13 +749,26 @@ class BetterPlayerController {
         videoPlayerController?.value ?? VideoPlayerValue(duration: Duration.zero);
 
     if (currentVideoPlayerValue.hasError) {
-      _videoPlayerValueOnError ??= currentVideoPlayerValue;
-      _postEvent(
-        BetterPlayerEvent(
-          BetterPlayerEventType.exception,
-          parameters: <String, dynamic>{'exception': currentVideoPlayerValue.errorDescription},
-        ),
-      );
+      // Emit `exception` once per distinct error, not once per value tick.
+      // An errored value keeps its errorDescription across every subsequent
+      // copyWith (position, buffering, …), so the unconditional _postEvent
+      // here used to re-fire the SAME error on every notification — tens of
+      // events per second — driving app-side retry logic into tearing down a
+      // stream that native playback had long recovered (or never even
+      // failed, when the error was a stale latch from the previous source).
+      if (_videoPlayerValueOnError?.errorDescription != currentVideoPlayerValue.errorDescription) {
+        _videoPlayerValueOnError = currentVideoPlayerValue;
+        _postEvent(
+          BetterPlayerEvent(
+            BetterPlayerEventType.exception,
+            parameters: <String, dynamic>{'exception': currentVideoPlayerValue.errorDescription},
+          ),
+        );
+      }
+    } else if (_videoPlayerValueOnError != null) {
+      // Recovered (or a fresh source cleared the error) — let the next
+      // failure, even with identical text, report again.
+      _videoPlayerValueOnError = null;
     }
     if (currentVideoPlayerValue.initialized && !_hasCurrentDataSourceInitialized) {
       _hasCurrentDataSourceInitialized = true;
